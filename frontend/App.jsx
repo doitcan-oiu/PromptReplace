@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Dialog, Tabs } from "radix-ui";
 import RulesTable from "./RulesTable.jsx";
 import {
-  AlertCircle, Check, ChevronDown, Copy, Eye, EyeOff, KeyRound,
-  Loader2, LogOut, RefreshCw, Replace, Save, Server, X,
+  AlertCircle, Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, FlaskConical, House, KeyRound,
+  Loader2, LogOut, RefreshCw, Replace, Server, X,
 } from "lucide-react";
 
 async function api(path, options = {}) {
@@ -34,9 +34,9 @@ function Button({ children, icon: Icon, variant = "secondary", busy = false, cla
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm"><Replace size={23} strokeWidth={1.8} /></div>
-      <div><div className="text-[17px] font-semibold tracking-tight text-slate-900">PromptReplace</div><div className="mt-0.5 text-xs text-slate-400">请求内容替换</div></div>
+    <div className="brand">
+      <div className="brand-mark"><Replace size={19} strokeWidth={1.8} /></div>
+      <span>PromptReplace</span>
     </div>
   );
 }
@@ -95,7 +95,7 @@ function Login({ configured, onLogin }) {
             </form>
           )}
         </section>
-        <p className="mt-6 text-center text-xs leading-6 text-slate-400">会话仅用于管理配置</p>
+        <p className="mt-6 text-center text-xs leading-6 text-slate-500">会话仅用于管理配置</p>
       </div>
     </main>
   );
@@ -115,13 +115,13 @@ function Preview({ rules }) {
     return { output, count };
   }, [text, rules]);
   return (
-    <details className="card group mt-7">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-4 focus-visible:ring-brand-500/15 [&::-webkit-details-marker]:hidden"><span>测试替换效果</span><ChevronDown size={17} className="text-slate-400 transition group-open:rotate-180" /></summary>
-      <div className="border-t border-slate-100 p-5">
+    <details className="preview-section group">
+      <summary className="preview-summary"><span className="flex items-center gap-2.5"><FlaskConical size={16} strokeWidth={1.7} />替换预览</span><ChevronDown size={16} className="text-slate-500 transition group-open:rotate-180" /></summary>
+      <div className="pt-5">
         <p className="mb-5 text-sm leading-6 text-slate-500">使用当前页面的启用规则进行本地预览。</p>
         <div className="grid gap-5 lg:grid-cols-2">
           <div><label htmlFor="preview-input" className="field-label">原始文本</label><textarea id="preview-input" className="field min-h-36 text-sm" rows={5} value={text} onChange={event => setText(event.target.value)} placeholder="粘贴一段文本，检查替换效果" spellCheck={false} /></div>
-          <div><div className="mb-2 flex justify-between gap-3"><label htmlFor="preview-output" className="text-sm font-medium text-slate-700">替换结果</label><span className="text-xs text-slate-400">匹配 {result.count} 处</span></div><textarea id="preview-output" className="field min-h-36 bg-slate-50 text-sm" rows={5} readOnly value={result.output} placeholder="替换结果将显示在这里" /></div>
+          <div><div className="mb-2 flex justify-between gap-3"><label htmlFor="preview-output" className="text-sm font-medium text-slate-700">替换结果</label><span className="text-xs text-slate-500">匹配 {result.count} 处</span></div><textarea id="preview-output" className="field min-h-36 bg-slate-50 text-sm" rows={5} readOnly value={result.output} placeholder="替换结果将显示在这里" /></div>
         </div>
       </div>
     </details>
@@ -213,27 +213,31 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
   }
 
   return (
-    <Tabs.Root value={tab} onValueChange={setTab} className="min-h-screen md:flex">
-      <aside className="app-sidebar border-b px-5 py-5 md:fixed md:inset-y-0 md:flex md:w-56 md:flex-col md:border-r md:border-b-0 md:px-5 md:py-7">
-        <Brand />
-        <Tabs.List aria-label="管理栏目" className="mt-6 flex gap-2 md:mt-10 md:flex-col md:gap-1.5">
-          <Tabs.Trigger value="rules" className="nav-item"><Replace size={18} strokeWidth={1.7} />替换规则</Tabs.Trigger>
-          <Tabs.Trigger value="upstream" className="nav-item"><Server size={18} strokeWidth={1.7} />上游配置</Tabs.Trigger>
-        </Tabs.List>
-        <div className="hidden flex-1 md:block" />
-        <div className="mt-6 hidden border-t border-slate-100 pt-5 md:block">
-          <p className="mb-3 px-3.5 text-xs text-slate-400">配置保存在 Cloudflare D1</p>
-          <button type="button" className="nav-item" disabled={busy} onClick={() => dirty ? setLogoutDialog(true) : logout()}><LogOut size={17} />退出登录</button>
+    <Tabs.Root value={tab} onValueChange={setTab} className="min-h-screen">
+      <header className="app-topbar">
+        <div className="app-topbar-inner">
+          <Brand />
+          <Tabs.List aria-label="管理栏目" className="app-navigation">
+            <Tabs.Trigger value="rules" className="nav-item">替换规则</Tabs.Trigger>
+            <Tabs.Trigger value="upstream" className="nav-item">上游配置</Tabs.Trigger>
+          </Tabs.List>
+          <div className="app-account">
+            <button type="button" className="logout-button" disabled={busy} onClick={() => dirty ? setLogoutDialog(true) : logout()}><LogOut size={15} /><span>退出登录</span></button>
+          </div>
         </div>
-      </aside>
-      <main className="app-main flex-1 md:ml-56">
-        <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
-          <header className="app-header mb-7 flex flex-wrap items-start justify-between gap-5 border-b pb-7">
-            <div><h1 className="text-[28px] font-semibold tracking-tight text-slate-950">{tab === "rules" ? "替换规则" : "上游配置"}</h1><p className="mt-2 text-sm leading-6 text-slate-500">{tab === "rules" ? "管理请求正文中的文字替换，按规则顺序执行。" : "设置替换后请求转发到的接口。"}</p></div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`mr-2 text-xs ${dirty ? "text-amber-600" : "text-slate-400"}`}>{dirty ? "有未保存的更改" : saved.updatedAt ? "已保存" : "使用初始配置"}</span>
-              <button type="button" className="icon-button h-10 w-10" title="重新加载配置" aria-label="重新加载配置" disabled={busy} onClick={() => dirty ? setReloadDialog(true) : reload()}><RefreshCw size={17} /></button>
-              <Button icon={Save} variant="primary" disabled={busy || !dirty} busy={busy} onClick={save}>{busy ? "处理中" : "保存更改"}</Button>
+      </header>
+      <main className="app-main">
+        <div className="app-content">
+          <div className="app-breadcrumb"><House size={14} strokeWidth={1.7} /><span>控制台</span><ChevronRight size={13} /><span>{tab === "rules" ? "替换规则" : "上游配置"}</span></div>
+          <header className="app-header">
+            <div>
+              <div className="flex items-center gap-3"><h1 className="page-title">{tab === "rules" ? "替换规则" : "上游配置"}</h1>{tab === "rules" && <span className="rule-count">{draft.rules.length}</span>}</div>
+              <p className="page-description">{tab === "rules" ? "管理请求正文中的文字替换，按规则顺序执行。" : "设置替换后请求转发到的接口。"}</p>
+            </div>
+            <div className="page-actions">
+              <span className={`save-state ${dirty ? "is-dirty" : ""}`}><span className="save-state-dot" />{dirty ? "有未保存的更改" : saved.updatedAt ? "已保存" : "使用初始配置"}</span>
+              <button type="button" className="btn btn-secondary reload-button" title="重新加载配置" aria-label="重新加载配置" disabled={busy} onClick={() => dirty ? setReloadDialog(true) : reload()}><RefreshCw size={16} /></button>
+              <Button icon={Check} variant="primary" disabled={busy || !dirty} busy={busy} onClick={save}>{busy ? "处理中" : "保存更改"}</Button>
             </div>
           </header>
 
@@ -244,18 +248,18 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
             <Preview rules={draft.rules} />
           </Tabs.Content>
 
-          <Tabs.Content value="upstream" className="space-y-6 outline-none">
+          <Tabs.Content value="upstream" className="upstream-content space-y-5 outline-none">
             <section className="card p-5 sm:p-7"><div className="mb-6 flex items-center gap-3"><div className="rounded-lg bg-brand-50 p-2 text-brand-600"><Server size={19} /></div><h2 className="font-semibold text-slate-800">上游接口</h2></div>
               <label htmlFor="upstream-url" className="field-label">接口基础地址</label><input id="upstream-url" type="url" className="field" value={draft.upstreamBaseUrl} onChange={event => setDraft(value => ({ ...value, upstreamBaseUrl: event.target.value }))} disabled={busy} placeholder="https://api.example.com/v1" autoComplete="off" spellCheck={false} />
-              <p className="mt-2 text-xs leading-6 text-slate-400">支持 HTTP 和 HTTPS。可以包含 /v1 等路径前缀。</p>
-              <div className="mt-7 flex items-center justify-between gap-3"><label htmlFor="upstream-key" className="field-label mb-0">上游 API Key</label><span className="text-xs text-slate-400">{clearKey ? "保存后删除" : saved.hasUpstreamKey ? "已设置" : "未设置"}</span></div>
+              <p className="mt-2 text-xs leading-6 text-slate-500">支持 HTTP 和 HTTPS。可以包含 /v1 等路径前缀。</p>
+              <div className="mt-7 flex items-center justify-between gap-3"><label htmlFor="upstream-key" className="field-label mb-0">上游 API Key</label><span className="text-xs text-slate-500">{clearKey ? "保存后删除" : saved.hasUpstreamKey ? "已设置" : "未设置"}</span></div>
               <div className="relative mt-2"><input id="upstream-key" type={showKey ? "text" : "password"} className="field pr-12" autoComplete="new-password" spellCheck={false} disabled={busy} value={upstreamKey} onChange={event => { setUpstreamKey(event.target.value); setClearKey(false); }} placeholder={saved.hasUpstreamKey ? "输入新密钥以替换已保存的密钥" : "输入上游 API Key"} /><button type="button" className="icon-button absolute top-2 right-2" disabled={busy} onClick={() => setShowKey(value => !value)} aria-label={showKey ? "隐藏新密钥" : "显示新密钥"}>{showKey ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs leading-6 text-slate-400">留空会保留当前密钥，已保存的密钥不会在页面回显。</p>{saved.hasUpstreamKey && <button type="button" className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-40" disabled={busy} onClick={() => clearKey ? setClearKey(false) : setClearKeyDialog(true)}>{clearKey ? "撤销删除密钥" : "删除已保存的密钥"}</button>}</div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs leading-6 text-slate-500">留空会保留当前密钥，已保存的密钥不会在页面回显。</p>{saved.hasUpstreamKey && <button type="button" className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-40" disabled={busy} onClick={() => clearKey ? setClearKey(false) : setClearKeyDialog(true)}>{clearKey ? "撤销删除密钥" : "删除已保存的密钥"}</button>}</div>
             </section>
             <section className="card p-5 sm:p-7"><h2 className="font-semibold text-slate-800">客户端接口地址</h2><p className="mt-2 text-sm leading-6 text-slate-500">将此地址填写到客户端的 OpenAI 兼容接口配置中。</p><div className="mt-5 flex flex-wrap gap-2"><input aria-label="客户端接口地址" readOnly value={window.location.origin + "/v1"} className="field min-w-0 flex-1 bg-slate-50 font-mono text-sm" /><Button icon={Copy} onClick={copyProxy}>复制</Button></div></section>
           </Tabs.Content>
 
-          <footer className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5 text-xs leading-6 text-slate-400"><span>{saved.updatedAt ? `最近保存 ${new Date(saved.updatedAt).toLocaleString("zh-CN", { hour12: false })}` : "保存后，新请求将读取 D1 中的配置。"}</span><button type="button" className="flex items-center gap-1.5 hover:text-slate-700 disabled:opacity-40 md:hidden" disabled={busy} onClick={() => dirty ? setLogoutDialog(true) : logout()}><LogOut size={14} />退出登录</button></footer>
+          <footer className="app-footer"><span>{saved.updatedAt ? `最近保存 ${new Date(saved.updatedAt).toLocaleString("zh-CN", { hour12: false })}` : "保存后，新请求将读取 D1 中的配置。"}</span></footer>
         </div>
       </main>
 
@@ -296,7 +300,7 @@ export default function App() {
   }
   function expired() { setSession(value => ({ ...value, authenticated: false })); setConfig(null); }
 
-  if (loading) return <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-5"><Brand /><div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 size={17} className="animate-spin" />正在加载配置</div></div>;
+  if (loading) return <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-5"><Brand /><div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={17} className="animate-spin" />正在加载配置</div></div>;
   if (loadError) return <main className="flex min-h-screen items-center justify-center p-5"><div className="card w-full max-w-md p-7"><Brand /><h1 className="mt-7 text-xl font-semibold">暂时无法加载配置</h1><p role="alert" className="mt-3 text-sm leading-7 text-slate-500">{loadError}</p><div className="mt-6 flex gap-2"><Button icon={RefreshCw} onClick={load}>重新加载</Button>{session?.authenticated && <Button variant="quiet" onClick={logout}>退出登录</Button>}</div></div></main>;
   if (!session?.authenticated) return <Login configured={session?.configured} onLogin={login} />;
   if (!config) return null;
