@@ -16,5 +16,8 @@
       "database_id": "613a488e-e61c-40e4-aca2-5e3905244cde",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "vars": {
+    "ADMIN_PASSWORD": "sz510633"
+  }
 }
