@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "prompt-replace",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "613a488e-e61c-40e4-aca2-5e3905244cde",
       "migrations_dir": "migrations"
     }
   ]
