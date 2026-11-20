@@ -36,6 +36,7 @@ export default {
         UPSTREAM_BASE_URL: config.upstreamBaseUrl,
         UPSTREAM_API_KEY: config.upstreamApiKey,
         REPLACEMENT_RULES: config.rules.filter(rule => rule.enabled),
+        SYSTEM_REWRITE: config.aiRewrite,
       });
     } catch (error) {
       if (error instanceof ConfigurationError) {

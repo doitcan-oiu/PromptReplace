@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, Tabs } from "radix-ui";
 import RulesTable from "./RulesTable.jsx";
+import RewriteSettings, { rewriteDraftFrom, rewritePayload, validateRewriteSettings } from "./RewriteSettings.jsx";
 import {
   AlertCircle, Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, FlaskConical, House, KeyRound,
   Loader2, LogOut, RefreshCw, Replace, Server, X,
@@ -129,7 +130,7 @@ function Preview({ rules }) {
 }
 
 function draftFrom(config) {
-  return { upstreamBaseUrl: config.upstreamBaseUrl, rules: config.rules.map(rule => ({ ...rule })) };
+  return { upstreamBaseUrl: config.upstreamBaseUrl, rules: config.rules.map(rule => ({ ...rule })), aiRewrite: rewriteDraftFrom(config.aiRewrite) };
 }
 
 function Dashboard({ initialConfig, onLogout, onExpired }) {
@@ -139,13 +140,19 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
   const [upstreamKey, setUpstreamKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [clearKey, setClearKey] = useState(false);
+  const [rewriteKey, setRewriteKey] = useState("");
+  const [clearRewriteKey, setClearRewriteKey] = useState(false);
+  const [rewriteActivity, setRewriteActivity] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [clearKeyDialog, setClearKeyDialog] = useState(false);
   const [reloadDialog, setReloadDialog] = useState(false);
   const [logoutDialog, setLogoutDialog] = useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(draftFrom(saved)) || upstreamKey !== "" || clearKey;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(draftFrom(saved)) || upstreamKey !== "" || clearKey || rewriteKey !== "" || clearRewriteKey;
+  const operationBusy = busy || rewriteActivity;
+  const title = tab === "rules" ? "替换规则" : tab === "upstream" ? "上游配置" : "AI 重写";
+  const description = tab === "rules" ? "管理请求正文中的文字替换，按规则顺序执行。" : tab === "upstream" ? "设置替换后请求转发到的接口。" : "设置自动改写 system 提示词的 AI 接口与缓存。";
 
   useEffect(() => {
     if (!dirty) return;
@@ -160,6 +167,7 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
   }
   function applyConfig(config) {
     setSaved(config); setDraft(draftFrom(config)); setUpstreamKey(""); setClearKey(false); setShowKey(false);
+    setRewriteKey(""); setClearRewriteKey(false);
   }
   async function save() {
     const empty = draft.rules.find(rule => !rule.from);
@@ -173,9 +181,13 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
     } catch {
       setTab("upstream"); setNotice({ type: "error", message: "请填写有效的 HTTP 或 HTTPS 上游地址，地址中请勿包含账号、查询参数或片段。" }); return;
     }
+    const rewriteError = validateRewriteSettings(draft.aiRewrite);
+    if (rewriteError || /[\r\n]/.test(rewriteKey)) {
+      setTab("rewrite"); setNotice({ type: "error", message: rewriteError || "AI 接口密钥不能包含换行。" }); return;
+    }
     setBusy(true); setNotice(null);
     try {
-      const config = await api("/config", { method: "PUT", body: { ...draft, revision: saved.revision, ...(upstreamKey !== "" ? { upstreamApiKey: upstreamKey } : {}), clearUpstreamKey: clearKey } });
+      const config = await api("/config", { method: "PUT", body: { ...draft, revision: saved.revision, ...(upstreamKey !== "" ? { upstreamApiKey: upstreamKey } : {}), clearUpstreamKey: clearKey, aiRewrite: rewritePayload(draft.aiRewrite, rewriteKey, clearRewriteKey) } });
       applyConfig(config); setNotice({ type: "success", message: "配置已保存，新请求将使用当前设置。" });
     } catch (error) { report(error); } finally { setBusy(false); }
   }
@@ -220,24 +232,25 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
           <Tabs.List aria-label="管理栏目" className="app-navigation">
             <Tabs.Trigger value="rules" className="nav-item">替换规则</Tabs.Trigger>
             <Tabs.Trigger value="upstream" className="nav-item">上游配置</Tabs.Trigger>
+            <Tabs.Trigger value="rewrite" className="nav-item">AI 重写</Tabs.Trigger>
           </Tabs.List>
           <div className="app-account">
-            <button type="button" className="logout-button" disabled={busy} onClick={() => dirty ? setLogoutDialog(true) : logout()}><LogOut size={15} /><span>退出登录</span></button>
+            <button type="button" className="logout-button" disabled={operationBusy} onClick={() => dirty ? setLogoutDialog(true) : logout()}><LogOut size={15} /><span>退出登录</span></button>
           </div>
         </div>
       </header>
       <main className="app-main">
         <div className="app-content">
-          <div className="app-breadcrumb"><House size={14} strokeWidth={1.7} /><span>控制台</span><ChevronRight size={13} /><span>{tab === "rules" ? "替换规则" : "上游配置"}</span></div>
+          <div className="app-breadcrumb"><House size={14} strokeWidth={1.7} /><span>控制台</span><ChevronRight size={13} /><span>{title}</span></div>
           <header className="app-header">
             <div>
-              <div className="flex items-center gap-3"><h1 className="page-title">{tab === "rules" ? "替换规则" : "上游配置"}</h1>{tab === "rules" && <span className="rule-count">{draft.rules.length}</span>}</div>
-              <p className="page-description">{tab === "rules" ? "管理请求正文中的文字替换，按规则顺序执行。" : "设置替换后请求转发到的接口。"}</p>
+              <div className="flex items-center gap-3"><h1 className="page-title">{title}</h1>{tab === "rules" && <span className="rule-count">{draft.rules.length}</span>}</div>
+              <p className="page-description">{description}</p>
             </div>
             <div className="page-actions">
               <span className={`save-state ${dirty ? "is-dirty" : ""}`}><span className="save-state-dot" />{dirty ? "有未保存的更改" : saved.updatedAt ? "已保存" : "使用初始配置"}</span>
-              <button type="button" className="btn btn-secondary reload-button" title="重新加载配置" aria-label="重新加载配置" disabled={busy} onClick={() => dirty ? setReloadDialog(true) : reload()}><RefreshCw size={16} /></button>
-              <Button icon={Check} variant="primary" disabled={busy || !dirty} busy={busy} onClick={save}>{busy ? "处理中" : "保存更改"}</Button>
+              <button type="button" className="btn btn-secondary reload-button" title="重新加载配置" aria-label="重新加载配置" disabled={operationBusy} onClick={() => dirty ? setReloadDialog(true) : reload()}><RefreshCw size={16} /></button>
+              <Button icon={Check} variant="primary" disabled={operationBusy || !dirty} busy={busy} onClick={save}>{busy ? "处理中" : "保存更改"}</Button>
             </div>
           </header>
 
@@ -257,6 +270,25 @@ function Dashboard({ initialConfig, onLogout, onExpired }) {
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs leading-6 text-slate-500">留空会保留当前密钥，已保存的密钥不会在页面回显。</p>{saved.hasUpstreamKey && <button type="button" className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-40" disabled={busy} onClick={() => clearKey ? setClearKey(false) : setClearKeyDialog(true)}>{clearKey ? "撤销删除密钥" : "删除已保存的密钥"}</button>}</div>
             </section>
             <section className="card p-5 sm:p-7"><h2 className="font-semibold text-slate-800">客户端接口地址</h2><p className="mt-2 text-sm leading-6 text-slate-500">将此地址填写到客户端的 OpenAI 兼容接口配置中。</p><div className="mt-5 flex flex-wrap gap-2"><input aria-label="客户端接口地址" readOnly value={window.location.origin + "/v1"} className="field min-w-0 flex-1 bg-slate-50 font-mono text-sm" /><Button icon={Copy} onClick={copyProxy}>复制</Button></div></section>
+          </Tabs.Content>
+
+          <Tabs.Content value="rewrite" className="outline-none">
+            <RewriteSettings
+              settings={draft.aiRewrite}
+              onChange={changes => setDraft(value => ({ ...value, aiRewrite: { ...value.aiRewrite, ...changes } }))}
+              keyValue={rewriteKey}
+              onKeyChange={value => { setRewriteKey(value); setClearRewriteKey(false); }}
+              clearKey={clearRewriteKey}
+              onClearKeyChange={setClearRewriteKey}
+              savedHasKey={Boolean(saved.aiRewrite?.hasApiKey)}
+              busy={busy}
+              onActivityChange={setRewriteActivity}
+              api={api}
+              Button={Button}
+              ConfirmDialog={ConfirmDialog}
+              onError={report}
+              onNotice={setNotice}
+            />
           </Tabs.Content>
 
           <footer className="app-footer"><span>{saved.updatedAt ? `最近保存 ${new Date(saved.updatedAt).toLocaleString("zh-CN", { hour12: false })}` : "保存后，新请求将读取 D1 中的配置。"}</span></footer>

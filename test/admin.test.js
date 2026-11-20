@@ -3,17 +3,20 @@ import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import worker from "../src/index.js";
-import { loadConfig } from "../src/config.js";
+import { DEFAULT_AI_REWRITE, loadConfig } from "../src/config.js";
 
-const migrations = await Promise.all(["0001_config.sql", "0002_initial_config.sql", "0003_chatbox_chinese_replacements.sql"].map(name =>
+const migrations = await Promise.all(["0001_config.sql", "0002_initial_config.sql", "0003_chatbox_chinese_replacements.sql", "0004_ai_system_rewrite.sql"].map(name =>
   readFile(new URL("../migrations/" + name, import.meta.url), "utf8")));
 const chatboxRules = JSON.parse(await readFile(new URL("../presets/chatbox-chinese.json", import.meta.url), "utf8"));
 const translateChatbox = text => chatboxRules.reduce((value, rule) => value.split(rule.from).join(rule.to), text);
+const { apiKey: defaultRewriteKey, ...defaultPublicRewriteFields } = DEFAULT_AI_REWRITE;
+const defaultPublicAiRewrite = { ...defaultPublicRewriteFields, hasApiKey: false };
 const origin = "https://proxy.example";
 const fixture = {
   upstreamBaseUrl: "https://upstream.example/v1",
   upstreamApiKey: "server-only-test-key",
   rules: [{ id: "default-1", from: "alpha", to: "initial", enabled: true }],
+  aiRewrite: { ...DEFAULT_AI_REWRITE },
   revision: 1,
   updatedAt: "2026-11-20T00:00:00.000Z",
 };
@@ -108,6 +111,7 @@ test("config requires authentication and exposes D1 settings without exposing th
   assert.equal(config.upstreamBaseUrl, fixture.upstreamBaseUrl);
   assert.equal(config.hasUpstreamKey, true);
   assert.equal(config.upstreamApiKey, undefined);
+  assert.deepEqual(config.aiRewrite, defaultPublicAiRewrite);
   assert.deepEqual(config.rules, [{ id: "default-1", from: "alpha", to: "initial", enabled: true }]);
 });
 
@@ -240,6 +244,7 @@ test("fresh D1 migrations seed the original and Chatbox Chinese rules without an
   assert.equal(config.upstreamBaseUrl, "http://104.168.101.204:8045/v1");
   assert.equal(config.upstreamApiKey, "");
   assert.equal(config.revision, 2);
+  assert.deepEqual(config.aiRewrite, DEFAULT_AI_REWRITE);
   assert.ok(Number.isFinite(Date.parse(config.updatedAt)));
   assert.deepEqual(config.rules, [
     { id: "default-1", from: "Use a skill when the task matches its description:", to: "当任务与某项技能的描述相符时，请使用该技能：", enabled: true },
@@ -385,7 +390,7 @@ test("an empty D1 table ignores legacy defaults, stops proxying and accepts a fi
   });
   await env.DB.prepare("DELETE FROM proxy_config").run();
   assert.deepEqual(await loadConfig(env), {
-    upstreamBaseUrl: "", upstreamApiKey: "", rules: [], revision: 0, updatedAt: null,
+    upstreamBaseUrl: "", upstreamApiKey: "", rules: [], aiRewrite: { ...DEFAULT_AI_REWRITE }, revision: 0, updatedAt: null,
   });
   const upstream = t.mock.method(globalThis, "fetch", async () => new Response("unexpected upstream call"));
   const denied = await worker.fetch(new Request(origin + "/v1/models"), env);
@@ -395,7 +400,7 @@ test("an empty D1 table ignores legacy defaults, stops proxying and accepts a fi
 
   const cookie = await login(env);
   const config = await (await call(env, "config", { cookie })).json();
-  assert.deepEqual(config, { upstreamBaseUrl: "", hasUpstreamKey: false, rules: [], revision: 0, updatedAt: null });
+  assert.deepEqual(config, { upstreamBaseUrl: "", hasUpstreamKey: false, rules: [], aiRewrite: defaultPublicAiRewrite, revision: 0, updatedAt: null });
   const response = await call(env, "config", { method: "PUT", cookie,
     body: changes(config, { upstreamBaseUrl: "https://first-save.example/v1", rules: fixture.rules }) });
   assert.equal(response.status, 200);
@@ -420,4 +425,221 @@ test("missing D1 binding reports 503 without making an upstream request or using
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error.code, "database_not_configured");
   assert.equal(upstream.mock.callCount(), 0);
+});
+
+test("AI migration defaults to disabled and preserves all pre-existing proxy settings", t => {
+  const database = new DatabaseSync(":memory:");
+  t.after(() => database.close());
+  for (const migration of migrations.slice(0, 3)) database.exec(migration);
+  database.prepare("UPDATE proxy_config SET upstream_base_url = ?, upstream_api_key = ?, rules_json = ?, revision = ?, updated_at = ? WHERE id = 1")
+    .run("https://kept.example/custom/v1", "kept-private-test-key", JSON.stringify(fixture.rules), 37, fixture.updatedAt);
+  const before = database.prepare("SELECT * FROM proxy_config WHERE id = 1").get();
+  database.exec(migrations[3]);
+  const after = database.prepare("SELECT * FROM proxy_config WHERE id = 1").get();
+  const { ai_rewrite_json, ...keptFields } = after;
+  assert.deepEqual(keptFields, { ...before });
+  assert.deepEqual(JSON.parse(ai_rewrite_json), DEFAULT_AI_REWRITE);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM system_rewrite_cache").get().count, 0);
+});
+
+test("AI rewrite settings persist separately, mask their key and remain intact for legacy saves", async t => {
+  const env = environment(t);
+  const cookie = await login(env);
+  const initial = await loadConfig(env);
+  const configured = {
+    enabled: true,
+    baseUrl: "https://rewrite.example/v1",
+    model: "rewrite-test-model",
+    apiKey: "rewrite-private-test-key",
+    timeoutSeconds: 60,
+    cacheEnabled: true,
+    cacheTtlHours: 168,
+  };
+  let response = await call(env, "config", { method: "PUT", cookie, body: changes(initial, { aiRewrite: configured }) });
+  assert.equal(response.status, 200);
+  const responseText = await response.text();
+  assert.equal(responseText.includes(configured.apiKey), false);
+  let saved = JSON.parse(responseText);
+  assert.equal(saved.aiRewrite.hasApiKey, true);
+  assert.equal(saved.aiRewrite.apiKey, undefined);
+  assert.equal(saved.aiRewrite.model, configured.model);
+  assert.deepEqual((await loadConfig(env)).aiRewrite, configured);
+
+  response = await call(env, "config", { method: "PUT", cookie, body: changes(saved) });
+  saved = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual((await loadConfig(env)).aiRewrite, configured);
+
+  response = await call(env, "config", { method: "PUT", cookie,
+    body: changes(saved, { aiRewrite: { model: "updated-model", apiKey: "", cacheEnabled: false } }) });
+  saved = await response.json();
+  assert.equal(saved.aiRewrite.model, "updated-model");
+  assert.equal(saved.aiRewrite.hasApiKey, true);
+  assert.equal(saved.aiRewrite.cacheEnabled, false);
+  assert.equal((await loadConfig(env)).aiRewrite.apiKey, configured.apiKey);
+
+  response = await call(env, "config", { method: "PUT", cookie,
+    body: changes(saved, { aiRewrite: { apiKey: "new-rewrite-test-key" } }) });
+  saved = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal((await loadConfig(env)).aiRewrite.apiKey, "new-rewrite-test-key");
+
+  response = await call(env, "config", { method: "PUT", cookie,
+    body: changes(saved, { aiRewrite: { clearApiKey: true } }) });
+  saved = await response.json();
+  assert.equal(saved.aiRewrite.hasApiKey, false);
+  assert.equal((await loadConfig(env)).aiRewrite.apiKey, "");
+  assert.equal((await loadConfig(env)).upstreamApiKey, fixture.upstreamApiKey);
+});
+
+test("AI rewrite validation rejects incomplete connections, unsafe URLs and invalid controls before persisting", async t => {
+  const env = environment(t);
+  const cookie = await login(env);
+  const initial = await loadConfig(env);
+  const invalid = [
+    null,
+    [],
+    { enabled: "true" },
+    { enabled: true },
+    { enabled: true, baseUrl: "https://rewrite.example/v1", model: "" },
+    { enabled: true, baseUrl: "", model: "model" },
+    { baseUrl: "ftp://rewrite.example" },
+    { baseUrl: "https://user:password@rewrite.example/v1" },
+    { baseUrl: "https://rewrite.example/v1?key=ignored" },
+    { baseUrl: "https://rewrite.example/v1#fragment" },
+    { baseUrl: 1 },
+    { model: false },
+    { timeoutSeconds: 4 },
+    { timeoutSeconds: 121 },
+    { timeoutSeconds: "45" },
+    { timeoutSeconds: 45.5 },
+    { cacheEnabled: 1 },
+    { cacheTtlHours: 0 },
+    { cacheTtlHours: 721 },
+    { cacheTtlHours: 2.5 },
+    { apiKey: false },
+    { apiKey: "invalid\nkey" },
+    { clearApiKey: "true" },
+    { clearApiKey: true, apiKey: "conflicting-test-key" },
+  ];
+  for (const aiRewrite of invalid) {
+    const response = await call(env, "config", { method: "PUT", cookie, body: changes(initial, { aiRewrite }) });
+    assert.equal(response.status, 400, JSON.stringify(aiRewrite));
+    assert.deepEqual(await loadConfig(env), initial);
+  }
+  const response = await call(env, "config", { method: "PUT", cookie,
+    body: changes(initial, { aiRewrite: { enabled: true, baseUrl: "http://127.0.0.1:9999/v1", model: "local-model" } }) });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).aiRewrite.hasApiKey, false);
+});
+
+test("rewrite management routes enforce authentication, origin, method and JSON checks", async t => {
+  const env = environment(t);
+  const outbound = t.mock.method(globalThis, "fetch", async () => new Response("unexpected outbound call"));
+  for (const [path, method] of [["rewrite/preview", "POST"], ["rewrite/cache", "GET"], ["rewrite/cache", "DELETE"]]) {
+    assert.equal((await call(env, path, { method, body: method === "GET" ? undefined : {} })).status, 401);
+  }
+  const cookie = await login(env);
+  for (const [path, method] of [["rewrite/preview", "POST"], ["rewrite/cache", "DELETE"]]) {
+    assert.equal((await call(env, path, { method, cookie, body: {}, requestOrigin: "https://other.example" })).status, 403);
+  }
+  const wrongMethod = await call(env, "rewrite/preview", { cookie });
+  assert.equal(wrongMethod.status, 405);
+  assert.equal(wrongMethod.headers.get("allow"), "POST");
+  assert.equal((await call(env, "rewrite/cache", { method: "POST", cookie, body: {} })).status, 405);
+  assert.equal((await call(env, "rewrite/preview", { method: "POST", cookie, body: {}, contentType: "text/plain" })).status, 415);
+  for (const body of [{}, { text: "" }, { text: "  " }, { text: 5 }, { text: "source", aiRewrite: { model: "" } }]) {
+    assert.equal((await call(env, "rewrite/preview", { method: "POST", cookie, body })).status, 400);
+  }
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test("rewrite cache management reports and deletes entries without changing settings", async t => {
+  const env = environment(t);
+  const cookie = await login(env);
+  const before = await loadConfig(env);
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO system_rewrite_cache (cache_key, rewritten_template, expires_at, lease_owner, lease_until, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind("ready-test-entry", "cached template", now + 60_000, null, 0, now).run();
+  await env.DB.prepare("INSERT INTO system_rewrite_cache (cache_key, rewritten_template, expires_at, lease_owner, lease_until, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind("pending-test-entry", null, 0, "owner-test", now + 60_000, now).run();
+  const stats = await call(env, "rewrite/cache", { cookie });
+  assert.equal(stats.status, 200);
+  assert.equal(stats.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await stats.json(), { entries: 1, pending: 1 });
+  const cleared = await call(env, "rewrite/cache", { method: "DELETE", cookie });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(await cleared.json(), { ok: true, deleted: 2 });
+  assert.deepEqual(await (await call(env, "rewrite/cache", { cookie })).json(), { entries: 0, pending: 0 });
+  assert.deepEqual(await loadConfig(env), before);
+});
+
+test("rewrite preview uses draft connection settings without saving or exposing either key", async t => {
+  const env = environment(t);
+  const cookie = await login(env);
+  const connection = {
+    ...DEFAULT_AI_REWRITE,
+    baseUrl: "https://rewrite.example/v1",
+    model: "stored-rewrite-model",
+    apiKey: "stored-rewrite-test-key",
+    cacheEnabled: false,
+  };
+  const saved = await call(env, "config", { method: "PUT", cookie,
+    body: changes(await loadConfig(env), { aiRewrite: connection }) });
+  assert.equal(saved.status, 200);
+  const before = await loadConfig(env);
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    const requestBody = JSON.parse(options.body);
+    const { source } = JSON.parse(requestBody.messages.at(-1).content);
+    assert.equal(typeof source, "string");
+    calls.push({ url: String(url), headers: new Headers(options.headers), body: requestBody });
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ rewritten: source.replace("Please follow these rules.", "请遵循这些规则。") }) } }] });
+  });
+  const text = "Please follow these rules. Keep `fixed_tool` unchanged.";
+  let response = await call(env, "rewrite/preview", { method: "POST", cookie, body: { text } });
+  assert.equal(response.status, 200);
+  const first = await response.json();
+  assert.match(first.rewritten, /请遵循这些规则/);
+  assert.ok(first.rewritten.includes("`fixed_tool`"));
+  assert.equal(first.cacheHit, false);
+  assert.equal(typeof first.durationMs, "number");
+  assert.equal(calls[0].url, "https://rewrite.example/v1/chat/completions");
+  assert.equal(calls[0].headers.get("authorization"), "Bearer stored-rewrite-test-key");
+  assert.equal(calls[0].headers.has("cookie"), false);
+  assert.equal(calls[0].body.model, connection.model);
+  assert.equal(calls[0].body.stream, false);
+  assert.equal((await loadConfig(env)).aiRewrite.enabled, false);
+
+  response = await call(env, "rewrite/preview", { method: "POST", cookie,
+    body: { text, aiRewrite: { baseUrl: "https://draft-rewriter.example/v1", model: "draft-model", apiKey: "draft-rewrite-test-key" } } });
+  assert.equal(response.status, 200);
+  const draftResponse = await response.text();
+  assert.equal(draftResponse.includes("draft-rewrite-test-key"), false);
+  assert.equal(draftResponse.includes(connection.apiKey), false);
+  assert.equal(calls[1].url, "https://draft-rewriter.example/v1/chat/completions");
+  assert.equal(calls[1].body.model, "draft-model");
+  assert.equal(calls[1].headers.get("authorization"), "Bearer draft-rewrite-test-key");
+  assert.deepEqual(await loadConfig(env), before);
+
+  response = await call(env, "rewrite/preview", { method: "POST", cookie,
+    body: { text, aiRewrite: { apiKey: "", clearApiKey: true } } });
+  assert.equal(response.status, 200);
+  assert.equal(calls[2].headers.has("authorization"), false);
+  assert.deepEqual(await loadConfig(env), before);
+});
+
+test("rewrite preview reports provider failure without returning private text or credentials", async t => {
+  const env = environment(t);
+  const cookie = await login(env);
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: { message: "private upstream detail: do-not-expose-test-key" } }, { status: 429 }));
+  const response = await call(env, "rewrite/preview", { method: "POST", cookie, body: {
+    text: "Private source text for a validation test.",
+    aiRewrite: { baseUrl: "https://rewrite.example/v1", model: "test-model", apiKey: "do-not-expose-test-key", cacheEnabled: false },
+  } });
+  assert.equal(response.status, 502);
+  const body = await response.text();
+  assert.equal(body.includes("do-not-expose-test-key"), false);
+  assert.equal(body.includes("Private source text"), false);
+  assert.match(JSON.parse(body).error.code, /^system_rewrite_/);
 });
