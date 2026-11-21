@@ -162,7 +162,7 @@ export function useProxyConfig() {
   return {
     session, saved, draft, loading, loadError, authNotice, page, setPage, upstreamKey, clearKey, busy, dirty, notice,
     phase: loading ? "loading" : loadError ? "error" : !session?.authenticated ? "login" : !saved || !draft ? "loading" : "ready",
-    load, login, save, copyProxy,
+    load, login, save, copyProxy, expire,
     dismissNotice: () => setNotice(null),
     setBaseUrl: value => setDraft(current => ({ ...current, upstreamBaseUrl: value })),
     setKey: value => { setUpstreamKey(value); setClearKey(false); },

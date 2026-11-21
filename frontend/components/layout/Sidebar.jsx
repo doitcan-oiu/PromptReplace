@@ -1,13 +1,23 @@
-import { LogOut, SlidersHorizontal } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Brand } from "@/components/shared/Brand";
+import { cn } from "@/lib/utils";
 import { navigation } from "./navigation";
 
-export function Sidebar({ page, onNavigate, onLogout, busy }) {
+function NavTooltip({ label, collapsed, children }) {
+  if (!collapsed) return children;
+  return <Tooltip><TooltipTrigger asChild>{children}</TooltipTrigger><TooltipContent side="right" sideOffset={12}>{label}</TooltipContent></Tooltip>;
+}
+
+export function Sidebar({ page, onNavigate, onLogout, busy, collapsed = false, onToggle, mobile = false }) {
+  const compact = collapsed && !mobile;
+  const toggleLabel = compact ? "展开侧栏" : "收起侧栏";
+  const ToggleIcon = compact ? PanelLeftOpen : PanelLeftClose;
   return <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
-    <div className="px-5 pb-6 pt-6"><Brand /></div><Separator />
-    <div className="flex-1 px-3 py-6"><p className="mb-3 px-3 text-xs font-medium text-muted-foreground">工作空间</p><nav aria-label="主导航" className="space-y-1.5">{navigation.map(item => <Button key={item.id} variant={page === item.id ? "secondary" : "ghost"} className={`h-11 w-full justify-start gap-3 rounded-lg px-3 text-sm ${page === item.id ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`} onClick={() => onNavigate(item.id)} aria-current={page === item.id ? "page" : undefined}><item.icon className="size-[18px]" strokeWidth={1.7} aria-hidden="true" />{item.label}</Button>)}</nav></div>
-    <div className="px-4 pb-4"><div className="mb-4 flex items-start gap-3 rounded-lg bg-muted/50 p-3.5"><SlidersHorizontal className="mt-0.5 size-4 shrink-0 text-muted-foreground" strokeWidth={1.7} aria-hidden="true" /><div><p className="text-sm font-medium">按顺序替换</p><p className="mt-1 text-xs leading-5 text-muted-foreground">编辑完成后保存，新请求立即生效。</p></div></div><Separator className="mb-3" /><Button variant="ghost" className="h-10 w-full justify-start gap-3 text-sm font-normal text-muted-foreground" disabled={busy} onClick={onLogout}><LogOut className="size-4" aria-hidden="true" />退出登录</Button></div>
+    <div className={cn("flex h-14 shrink-0 items-center", compact ? "justify-center" : "px-3", mobile && "pr-9")}><Brand compact iconOnly={compact} /></div>
+    {!mobile && <div className="px-2 pb-3"><NavTooltip label={toggleLabel} collapsed={compact}><Button variant="ghost" className={cn("h-9 w-full rounded-lg px-3 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent", compact ? "justify-center px-0" : "justify-start gap-2.5")} onClick={onToggle} aria-label={toggleLabel} aria-expanded={!compact} aria-controls="desktop-navigation"><ToggleIcon className="size-[18px] shrink-0" strokeWidth={1.7} aria-hidden="true" />{!compact && <span>{toggleLabel}</span>}</Button></NavTooltip></div>}
+    <nav id={mobile ? "mobile-navigation" : "desktop-navigation"} aria-label="主导航" className={cn("flex-1 space-y-1 px-2", mobile && "pt-3")}>{navigation.map(item => <NavTooltip key={item.id} label={item.label} collapsed={compact}><Button variant="ghost" className={cn("h-10 w-full rounded-lg text-sm hover:bg-sidebar-accent", compact ? "justify-center px-0" : "justify-start gap-2.5 px-3", page === item.id ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "font-normal text-muted-foreground")} onClick={() => onNavigate(item.id)} aria-label={item.label} aria-current={page === item.id ? "page" : undefined}><item.icon className="size-[18px] shrink-0" strokeWidth={1.7} aria-hidden="true" />{!compact && <span>{item.label}</span>}</Button></NavTooltip>)}</nav>
+    <div className="p-2 pb-4"><NavTooltip label="退出登录" collapsed={compact}><Button variant="ghost" className={cn("h-10 w-full rounded-lg text-sm font-normal text-muted-foreground hover:bg-sidebar-accent", compact ? "justify-center px-0" : "justify-start gap-2.5 px-3")} disabled={busy} onClick={onLogout} aria-label="退出登录"><LogOut className="size-[18px] shrink-0" strokeWidth={1.7} aria-hidden="true" />{!compact && <span>退出登录</span>}</Button></NavTooltip></div>
   </div>;
 }

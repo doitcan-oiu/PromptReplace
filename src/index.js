@@ -20,7 +20,7 @@ async function adminPage(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;
     if (path === "/") return Response.redirect(new URL("/admin/", request.url), 302);
     if (path.startsWith("/admin/api/")) return handleAdminApi(request, env);
@@ -36,7 +36,7 @@ export default {
         UPSTREAM_BASE_URL: config.upstreamBaseUrl,
         UPSTREAM_API_KEY: config.upstreamApiKey,
         REPLACEMENT_RULES: config.rules.filter(rule => rule.enabled),
-      });
+      }, ctx);
     } catch (error) {
       if (error instanceof ConfigurationError) {
         return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });

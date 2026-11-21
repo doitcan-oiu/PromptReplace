@@ -5,7 +5,7 @@ import test from "node:test";
 import worker from "../src/index.js";
 import { loadConfig } from "../src/config.js";
 
-const migrations = await Promise.all(["0001_config.sql", "0002_initial_config.sql", "0003_chatbox_chinese_replacements.sql", "0004_ai_system_rewrite.sql", "0005_remove_ai_system_rewrite.sql"].map(name =>
+const migrations = await Promise.all(["0001_config.sql", "0002_initial_config.sql", "0003_chatbox_chinese_replacements.sql", "0004_ai_system_rewrite.sql", "0005_remove_ai_system_rewrite.sql", "0006_interceptions.sql"].map(name =>
   readFile(new URL("../migrations/" + name, import.meta.url), "utf8")));
 const chatboxRules = JSON.parse(await readFile(new URL("../presets/chatbox-chinese.json", import.meta.url), "utf8"));
 const translateChatbox = text => chatboxRules.reduce((value, rule) => value.split(rule.from).join(rule.to), text);

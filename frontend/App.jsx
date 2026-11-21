@@ -6,7 +6,7 @@ import { ConfirmAction } from "@/components/shared/ConfirmAction";
 import { StatusNotice } from "@/components/shared/StatusNotice";
 import RulesPage from "@/features/rules/RulesPage";
 import UpstreamPage from "@/features/upstream/UpstreamPage";
-import PreviewPage from "@/features/preview/PreviewPage";
+import InterceptionsPage from "@/features/interceptions/InterceptionsPage";
 import { useProxyConfig } from "@/hooks/useProxyConfig";
 
 export default function App() {
@@ -19,7 +19,7 @@ export default function App() {
     <StatusNotice notice={config.notice} onDismiss={config.dismissNotice} />
     <section hidden={config.page !== "rules"} aria-label="替换规则"><RulesPage rules={config.draft.rules} disabled={config.busy} onChange={config.changeRule} onCommit={config.commitRule} onMove={config.moveRule} onDelete={config.requestDeleteRule} /></section>
     <section hidden={config.page !== "upstream"} aria-label="上游配置"><UpstreamPage baseUrl={config.draft.upstreamBaseUrl} onBaseUrlChange={config.setBaseUrl} keyValue={config.upstreamKey} onKeyChange={config.setKey} hasStoredKey={Boolean(config.saved.hasUpstreamKey)} clearKey={config.clearKey} onRequestClearKey={config.requestClearKey} onUndoClearKey={config.undoClearKey} disabled={config.busy} onCopyProxy={config.copyProxy} proxyUrl={window.location.origin + "/v1"} /></section>
-    <section hidden={config.page !== "preview"} aria-label="替换预览"><PreviewPage rules={config.draft.rules} /></section>
+    <section hidden={config.page !== "interceptions"} aria-label="拦截管理"><InterceptionsPage active={config.page === "interceptions"} onUnauthorized={config.expire} /></section>
   </AppShell>;
   return <TooltipProvider delayDuration={300}>{content}<ConfirmAction confirmation={config.confirmation} onClose={config.closeConfirmation} onConfirm={config.confirmAction} /></TooltipProvider>;
 }

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getPaginationItems, getRulePage } from "../frontend/features/rules/rules-model.js";
-import { applyReplacements } from "../frontend/features/preview/apply-replacements.js";
 
 const rule = (id, from, to, enabled = true) => Object.freeze({ id, from, to, enabled });
 
@@ -70,31 +69,4 @@ test("pagination keeps useful boundary and nearby pages without enumerating very
   assert.deepEqual(getPaginationItems(1, 1_000_000), [1, 2, "gap-1000000", 1_000_000]);
   assert.deepEqual(getPaginationItems(500_000, 1_000_000), [1, "gap-499999", 499_999, 500_000, 500_001, "gap-1000000", 1_000_000]);
   assert.deepEqual(getPaginationItems(1_000_000, 1_000_000), [1, "gap-999999", 999_999, 1_000_000]);
-});
-
-test("replacement previews apply rules in order and count matches introduced by an earlier rule", () => {
-  const rules = Object.freeze([
-    rule("first", "alpha", "beta"),
-    rule("second", "beta", "gamma"),
-  ]);
-  assert.deepEqual(applyReplacements("alpha beta", rules), { output: "gamma gamma", count: 3 });
-  assert.deepEqual(applyReplacements("alpha beta", [...rules].reverse()), { output: "beta gamma", count: 2 });
-});
-
-test("replacement previews treat regex metacharacters and replacement dollar syntax as literal text", () => {
-  assert.deepEqual(applyReplacements("a.* [x] a.*", [
-    rule("literal-pattern", "a.*", "$&"),
-    rule("brackets", "[x]", "$1"),
-  ]), { output: "$& $1 $&", count: 3 });
-});
-
-test("disabled and empty-source rules are skipped while empty replacement text deletes only matched text", () => {
-  const rules = [
-    rule("disabled", "delete_me", "should not apply", false),
-    rule("empty-source", "", "should not insert"),
-    rule("deletion", "delete_me", ""),
-  ];
-  assert.deepEqual(applyReplacements("prefix delete_me delete_me suffix", rules), { output: "prefix   suffix", count: 2 });
-  assert.deepEqual(applyReplacements("", rules), { output: "", count: 0 });
-  assert.deepEqual(applyReplacements("unchanged", []), { output: "unchanged", count: 0 });
 });

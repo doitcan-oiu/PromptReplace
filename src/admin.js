@@ -1,4 +1,5 @@
 import { ConfigurationError, loadConfig, publicConfig, saveConfig } from "./config.js";
+import { deleteInterception, getInterception, InterceptionError, listInterceptions, updateInterception } from "./interceptions.js";
 
 const COOKIE_NAME = "promptreplace_admin";
 const SESSION_SECONDS = 8 * 60 * 60;
@@ -88,12 +89,15 @@ async function jsonBody(request) {
 }
 
 export async function handleAdminApi(request, env) {
-  const path = new URL(request.url).pathname;
-  const allowed = {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const interceptionMatch = path.match(/^\/admin\/api\/interceptions\/([^/]+)$/);
+  const allowed = interceptionMatch ? ["GET", "PATCH", "DELETE"] : {
     "/admin/api/session": ["GET"],
     "/admin/api/login": ["POST"],
     "/admin/api/logout": ["POST"],
     "/admin/api/config": ["GET", "PUT"],
+    "/admin/api/interceptions": ["GET"],
   }[path];
   if (!allowed) return error(404, "not_found", "管理接口不存在。");
   if (!allowed.includes(request.method)) {
@@ -128,10 +132,17 @@ export async function handleAdminApi(request, env) {
     if (!env.DB) {
       return error(503, "database_not_configured", "请先配置 D1 数据库绑定 DB 并执行数据库迁移。");
     }
+    if (path === "/admin/api/interceptions") return json(await listInterceptions(env, url));
+    if (interceptionMatch) {
+      const id = interceptionMatch[1];
+      if (request.method === "PATCH") return json(await updateInterception(env, id, await jsonBody(request)));
+      if (request.method === "DELETE") return json(await deleteInterception(env, id));
+      return json(await getInterception(env, id));
+    }
     const configuration = request.method === "GET" ? await loadConfig(env) : await saveConfig(env, await jsonBody(request));
     return json(publicConfig(configuration));
   } catch (failure) {
-    if (failure instanceof ConfigurationError) return error(failure.status, failure.code, failure.message);
+    if (failure instanceof ConfigurationError || failure instanceof InterceptionError) return error(failure.status, failure.code, failure.message);
     return error(500, "admin_storage_error", "管理服务暂时不可用，请检查 D1 绑定及数据库迁移。");
   }
 }
