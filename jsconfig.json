@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./frontend/*"] },
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowJs": true
+  },
+  "include": ["frontend"]
+}

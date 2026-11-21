@@ -1,5 +1,4 @@
-import { ConfigurationError, loadConfig, publicConfig, resolveAiRewriteSettings, saveConfig } from "./config.js";
-import { clearRewriteCache, getRewriteCacheStats, RewriteError, rewriteErrorResponse, rewriteSystemText } from "./rewrite.js";
+import { ConfigurationError, loadConfig, publicConfig, saveConfig } from "./config.js";
 
 const COOKIE_NAME = "promptreplace_admin";
 const SESSION_SECONDS = 8 * 60 * 60;
@@ -95,8 +94,6 @@ export async function handleAdminApi(request, env) {
     "/admin/api/login": ["POST"],
     "/admin/api/logout": ["POST"],
     "/admin/api/config": ["GET", "PUT"],
-    "/admin/api/rewrite/preview": ["POST"],
-    "/admin/api/rewrite/cache": ["GET", "DELETE"],
   }[path];
   if (!allowed) return error(404, "not_found", "管理接口不存在。");
   if (!allowed.includes(request.method)) {
@@ -131,24 +128,10 @@ export async function handleAdminApi(request, env) {
     if (!env.DB) {
       return error(503, "database_not_configured", "请先配置 D1 数据库绑定 DB 并执行数据库迁移。");
     }
-    if (path === "/admin/api/rewrite/cache") {
-      return json(request.method === "GET" ? await getRewriteCacheStats(env) : { ok: true, ...await clearRewriteCache(env) });
-    }
-    if (path === "/admin/api/rewrite/preview") {
-      const input = await jsonBody(request);
-      if (typeof input?.text !== "string" || !input.text.trim()) {
-        throw new ConfigurationError("请填写要测试重写的 system 文字。");
-      }
-      const current = await loadConfig(env);
-      const settings = resolveAiRewriteSettings(input.aiRewrite, current.aiRewrite, { requireConnection: true });
-      const result = await rewriteSystemText(input.text, { ...settings, enabled: true }, env, { signal: request.signal, requestUrl: request.url });
-      return json({ rewritten: result.text, cacheHit: result.cacheHit, durationMs: result.durationMs });
-    }
     const configuration = request.method === "GET" ? await loadConfig(env) : await saveConfig(env, await jsonBody(request));
     return json(publicConfig(configuration));
   } catch (failure) {
     if (failure instanceof ConfigurationError) return error(failure.status, failure.code, failure.message);
-    if (failure instanceof RewriteError) return rewriteErrorResponse(failure);
     return error(500, "admin_storage_error", "管理服务暂时不可用，请检查 D1 绑定及数据库迁移。");
   }
 }
